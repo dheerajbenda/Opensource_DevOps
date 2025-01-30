@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Health Check Status</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
+    <style>
+        .status-up {
+            color: green;
+        }
+        .status-down {
+            color: red;
+        }
+        .status-unknown {
+            color: orange;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 80px;
+        }
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            background: white;
+            padding: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .content {
+            margin-top: 140px;
+            padding-bottom: 100px;
+        }
+        .table {
+            width: 100%;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .refresh-btn {
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        .refresh-all-btn {
+            margin-left: 20px;
+            cursor: pointer;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        .timestamp {
+            font-size: 0.9em;
+            color: #555;
+        }
+        .select2-container {
+            width: 250px !important;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="fixed-header">
+        <div>
+            <h1 class="d-inline">Health Check Status</h1>
+            <div id="lastRefreshTime" class="timestamp">Last auto-refresh: Not yet refreshed</div>
+        </div>
+        <div>
+            <select id="serviceSelect" class="form-control select2" multiple="multiple"></select>
+        </div>
+        <div>
+            <span id="refreshButton" class="refresh-btn" title="Refresh Page">↻</span>
+            <span id="refreshAllButton" class="refresh-all-btn" title="Refresh All Services">🔄 Refresh All</span>
+        </div>
+    </div>
+    <div class="content">
+        <div class="loading" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+            Loading all services...
+        </div>
+        <table class="table table-striped" id="servicesTable">
+            <thead>
+            <tr>
+                <th>Service Name</th>
+                <th>Status</th>
+            </tr>
+            </thead>
+            <tbody id="servicesTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="footer">
+    <p>&copy; 2024. All rights reserved.</p>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('.select2').select2({
+            placeholder: 'Select Services',
+            allowClear: true,
+            closeOnSelect: false
+        });
+
+        $('#serviceSelect').on('select2:select select2:unselect', function () {
+            filterServices();
+        });
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const servicesTableBody = document.getElementById('servicesTableBody');
+        const serviceSelect = $('#serviceSelect');
+        const loading = document.getElementById('loading');
+
+        function populateTable(serviceNames) {
+            servicesTableBody.innerHTML = '';
+            serviceNames.forEach(name => {
+                const row = servicesTableBody.insertRow();
+                row.id = name;
+
+                const nameCell = row.insertCell();
+                const statusCell = row.insertCell();
+
+                nameCell.textContent = name;
+                statusCell.textContent = 'Loading...';
+            });
+        }
+
+        function populateServiceSelect(serviceNames) {
+            serviceSelect.empty();
+            serviceNames.forEach(name => {
+                serviceSelect.append(new Option(name, name, true, true));
+            });
+            serviceSelect.trigger('change');
+        }
+
+        function filterServices() {
+            const selectedServices = serviceSelect.val();
+            const allRows = servicesTableBody.querySelectorAll('tr');
+
+            allRows.forEach(row => {
+                row.style.display = selectedServices.includes(row.id) ? '' : 'none';
+            });
+        }
+
+        function updateServiceRow(name, status) {
+            const row = document.getElementById(name);
+            const statusCell = row.cells[1];
+
+            statusCell.textContent = status;
+
+            if (status.includes('up')) {
+                statusCell.className = 'status-up';
+            } else if (status.includes('down')) {
+                statusCell.className = 'status-down';
+            } else {
+                statusCell.className = 'status-unknown';
+            }
+        }
+
+        function refreshService(serviceName) {
+            console.log(`Fetching status for ${serviceName}`);
+            fetch(`/websites/status/individual?serviceName=${serviceName}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(status => {
+                    console.log(`Status for ${serviceName}: ${status}`);
+                    updateServiceRow(serviceName, status);
+                })
+                .catch(error => {
+                    console.error(`Error fetching status for ${serviceName}:`, error);
+                    updateServiceRow(serviceName, 'Error fetching status ❌');
+                });
+        }
+
+        function refreshAllServices() {
+            console.log('Refreshing all services...');
+            const serviceNames = Array.from(document.querySelectorAll('#servicesTableBody tr')).map(row => row.id);
+            serviceNames.forEach(refreshService);
+        }
+
+        fetch('/websites/names')
+            .then(response => response.json())
+            .then(serviceNames => {
+                console.log('Service names received:', serviceNames);
+                populateTable(serviceNames);
+                populateServiceSelect(serviceNames);
+                serviceNames.forEach(refreshService);
+            })
+            .catch(() => {
+                loading.innerHTML = '<p>Error loading services</p>';
+            });
+
+        document.getElementById('refreshButton').onclick = () => location.reload();
+        document.getElementById('refreshAllButton').onclick = refreshAllServices;
+
+        setInterval(refreshAllServices, 900000); // Auto-refresh every 15 minutes
+    });
+</script>
+</body>
+</html>
