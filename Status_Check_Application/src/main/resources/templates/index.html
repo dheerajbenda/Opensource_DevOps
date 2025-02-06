@@ -9,7 +9,6 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
         }
 
         .fixed-header {
@@ -100,8 +99,8 @@
         function fetchServices() {
             return fetch('/websites/names')
                 .then(response => response.json())
-                .then(names => {
-                    services = names;
+                .then(serviceUrls => {
+                    services = serviceUrls;
                     populateTable();
                     updateDropdown();
                 })
@@ -110,8 +109,7 @@
 
         function populateTable() {
             tableBody.empty();
-            for (const name of Object.keys(services)) {
-                const url = services[name];
+            for (const [name, url] of Object.entries(services)) {
                 const row = `<tr id="${name}">
                                 <td><a href="${url}" target="_blank">${name}</a></td>
                                 <td class="status-loading">Loading...</td>
