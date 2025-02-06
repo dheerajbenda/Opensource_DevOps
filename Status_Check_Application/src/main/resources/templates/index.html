@@ -8,8 +8,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
     <style>
         body {
-            margin: 0;
             font-family: Arial, sans-serif;
+            margin: 0;
         }
 
         .fixed-header {
@@ -27,18 +27,8 @@
 
         .filter-container {
             display: flex;
-            flex-wrap: wrap;
             gap: 15px;
             align-items: center;
-        }
-
-        .filter-container select,
-        .filter-container input {
-            flex: 0 1 auto;
-        }
-
-        .filter-container label {
-            font-size: 0.9em;
         }
 
         .content {
@@ -76,7 +66,7 @@
     <div class="filter-container">
         <select id="serviceSelect" class="dropdown-select" multiple="multiple"></select>
         <div>
-            <label for="refreshInterval">Interval (secs):</label>
+            <label for="refreshInterval">Auto-Refresh Interval (secs):</label>
             <input id="refreshInterval" class="form-control" type="number" placeholder="15" min="10">
         </div>
         <button id="refreshButton" class="btn btn-primary">Refresh</button>
@@ -86,7 +76,7 @@
     <table class="table table-bordered">
         <thead>
         <tr>
-            <th>Service Name <button id="sortButton" class="btn btn-link">Sort</button></th>
+            <th>Service Name</th>
             <th>Status</th>
         </tr>
         </thead>
@@ -94,25 +84,34 @@
     </table>
 </div>
 <script>
+    let autoRefreshInterval; // Declare the auto-refresh interval globally
+
     $(document).ready(function () {
-        // Initialize Select2 dropdown
         $('#serviceSelect').select2({
             placeholder: "Select Services",
             allowClear: true,
             closeOnSelect: false
         });
 
-        const services = {
-            Google: "https://www.google.com",
-            Yahoo: "https://www.yahoo.com",
-            Test: "https://www.abfhkbeefkba.com"
-        };
+        let services = {};
 
         const tableBody = $("#servicesTableBody");
 
+        function fetchServices() {
+            return fetch('/websites/names')
+                .then(response => response.json())
+                .then(names => {
+                    services = names;
+                    populateTable();
+                    updateDropdown();
+                })
+                .catch(error => console.error("Error fetching service names:", error));
+        }
+
         function populateTable() {
             tableBody.empty();
-            for (const [name, url] of Object.entries(services)) {
+            for (const name of Object.keys(services)) {
+                const url = services[name];
                 const row = `<tr id="${name}">
                                 <td><a href="${url}" target="_blank">${name}</a></td>
                                 <td class="status-loading">Loading...</td>
@@ -132,16 +131,14 @@
         }
 
         function refreshStatus() {
-            const promises = [];
             for (const name of Object.keys(services)) {
                 const row = $(`#${name}`);
                 const statusCell = row.find("td:nth-child(2)");
 
-                // Show "loading..." while fetching
                 statusCell.text("Loading...");
                 statusCell.removeClass().addClass("status-loading");
 
-                const promise = fetch(`/websites/status/individual?serviceName=${name}`)
+                fetch(`/websites/status/individual?serviceName=${name}`)
                     .then(response => response.text())
                     .then(status => {
                         statusCell.text(status);
@@ -156,45 +153,26 @@
                         statusCell.text("Error fetching status");
                         statusCell.addClass("status-down");
                     });
-                promises.push(promise);
             }
-            Promise.all(promises).then(() => {
-                $("#lastRefreshTime").text(`Last auto-refresh: ${new Date().toLocaleTimeString()}`);
-            });
+            $("#lastRefreshTime").text(`Last auto-refresh: ${new Date().toLocaleTimeString()}`);
         }
 
         function autoRefresh() {
-            const interval = $("#refreshInterval").val() * 1000 || 15000;
-            setInterval(refreshStatus, interval);
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            const interval = ($("#refreshInterval").val() || 15) * 1000;
+            autoRefreshInterval = setInterval(refreshStatus, interval);
         }
 
-        // Event listener for dropdown changes
-        $('#serviceSelect').on('change', function () {
-            const selected = $(this).val();
-            tableBody.children().each(function () {
-                const id = $(this).attr('id');
-                if (selected.includes(id)) {
-                    $(this).show();
-                } else {
-                    $(this).hide();
-                }
-            });
-        });
+        $("#refreshInterval").on("input", autoRefresh);
 
-        // Event listener for refresh button
         $("#refreshButton").on("click", refreshStatus);
 
-        // Event listener for sort button
-        $("#sortButton").on("click", function () {
-            const rows = tableBody.find("tr").get();
-            rows.sort((a, b) => $(a).attr("id").localeCompare($(b).attr("id")));
-            tableBody.append(rows);
+        fetchServices().then(() => {
+            refreshStatus();
+            autoRefresh();
         });
-
-        populateTable();
-        updateDropdown();
-        refreshStatus(); // Trigger initial status load
-        autoRefresh();
     });
 </script>
 </body>
